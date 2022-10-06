@@ -1649,6 +1649,14 @@ protected:
                      return true;
                    });
              })
+        .Get("/long-running",
+             [&](const Request & /*req*/, Response &res) {
+               // Simulate a long running process.
+               // Small payload but a long time processing...
+               sleep(10);
+               res.set_content("{\"success\": \"true\"}", "application/json");
+               res.status = 200;
+             })
         .Get("/with-range",
              [&](const Request & /*req*/, Response &res) {
                res.set_content("abcdefg", "text/plain");
@@ -2665,6 +2673,24 @@ TEST_F(ServerTest, ClientStop) {
   for (auto &t : threads) {
     t.join();
   }
+}
+
+TEST_F(ServerTest, ClientLongRunningStop) {
+  auto start = std::chrono::high_resolution_clock::now();
+  thread t([&]() {
+    string body = "{\"mybody\": \"is small\"}";
+    auto res = cli_.Post("/long-running", body, "application/json");
+  });
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  while (cli_.is_socket_open()) {
+    cli_.stop();
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  t.join();
+  auto end = std::chrono::high_resolution_clock::now();
+  auto elapsed_seconds = chrono::duration_cast<chrono::seconds>(end - start).count();
+  EXPECT_TRUE(elapsed_seconds < 9);
 }
 
 TEST_F(ServerTest, GetWithRange1) {
